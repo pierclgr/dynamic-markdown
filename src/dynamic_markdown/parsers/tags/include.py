@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import ClassVar
 
-from src.parsers.dynamic_markdown.tags.base import TagParser
+from dynamic_markdown.parsers.tags.base import TagParser
 
 
 class IncludeTagParser(TagParser):
@@ -42,15 +42,15 @@ class IncludeTagParser(TagParser):
             ValueError: when the include target is already in the
                 ``visited`` chain, indicating a cycle.
         """
-        from src.parsers.dynamic_markdown.base import DynamicMarkdownParser
-        from src.types.dynamic_markdown.file import DynamicMarkdownFile
+        from dynamic_markdown.parsers.files.base import DynamicMarkdownFileParser
+        from dynamic_markdown.types.files.base import DynamicMarkdownFile
 
         target = (base_dir / match.group(1).strip()).resolve()
         if target in visited:
             chain = " -> ".join(str(p) for p in (*visited, target))
             raise ValueError(f"<include> cycle detected: {chain}")
         included = DynamicMarkdownFile(target)
-        return DynamicMarkdownParser.parse(
+        return DynamicMarkdownFileParser.parse(
             file=included,
             base_dir=base_dir,
             field_source=field_source,

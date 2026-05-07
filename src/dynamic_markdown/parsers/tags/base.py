@@ -4,7 +4,7 @@ import re
 from abc import ABC, abstractmethod
 from typing import ClassVar
 
-from src.parsers.base import Parser
+from dynamic_markdown.parsers.base import Parser
 
 
 class TagParser(Parser, ABC):

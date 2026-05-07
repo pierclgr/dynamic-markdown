@@ -5,16 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from src.parsers.base import Parser
-from src.parsers.dynamic_markdown.tags.field import FieldTagParser
-from src.parsers.dynamic_markdown.tags.include import IncludeTagParser
-from src.parsers.dynamic_markdown.tags.script import ScriptTagParser
+from dynamic_markdown.parsers.base import Parser
+from dynamic_markdown.parsers.tags.field import FieldTagParser
+from dynamic_markdown.parsers.tags.include import IncludeTagParser
+from dynamic_markdown.parsers.tags.script import ScriptTagParser
 
 if TYPE_CHECKING:
-    from src.types.dynamic_markdown.file import DynamicMarkdownFile
+    from dynamic_markdown.types.files.base import DynamicMarkdownFile
 
 
-class DynamicMarkdownParser(Parser):
+class DynamicMarkdownFileParser(Parser):
     """Expand ``<include>``, ``<script>`` and ``<field>`` tags in dynamic markdown.
 
     Three special tag types are recognized:

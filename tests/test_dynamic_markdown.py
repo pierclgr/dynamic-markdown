@@ -8,8 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.parsers.dynamic_markdown.base import DynamicMarkdownParser
-from src.types.dynamic_markdown.file import DynamicMarkdownFile
+from dynamic_markdown.parsers.files.base import DynamicMarkdownFileParser
+from dynamic_markdown.types.files.base import DynamicMarkdownFile
 
 
 def _write(path: Path, content: str) -> Path:
@@ -314,7 +314,7 @@ def test_parser_parse_accepts_string_base_dir(tmp_path: Path) -> None:
     file = DynamicMarkdownFile(_write(tmp_path / "source.md", "<field>name</field>"))
 
     assert (
-        DynamicMarkdownParser.parse(
+        DynamicMarkdownFileParser.parse(
             file=file,
             base_dir=str(tmp_path),
             field_source=SimpleNamespace(name="tool"),

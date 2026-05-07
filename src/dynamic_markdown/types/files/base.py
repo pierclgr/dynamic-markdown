@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.parsers.dynamic_markdown.base import DynamicMarkdownParser
+from dynamic_markdown.parsers.files.base import DynamicMarkdownFileParser
 
 
 class DynamicMarkdownFile:
@@ -16,7 +16,7 @@ class DynamicMarkdownFile:
         raw: raw text content of the file as read from disk.
     """
 
-    _parser: type[DynamicMarkdownParser] = DynamicMarkdownParser
+    _parser: type[DynamicMarkdownFileParser] = DynamicMarkdownFileParser
 
     def __init__(self, path: Path | str) -> None:
         """Initialize the file with its raw text content.

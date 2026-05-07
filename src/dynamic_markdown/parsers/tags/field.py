@@ -3,7 +3,7 @@
 import re
 from typing import ClassVar
 
-from src.parsers.dynamic_markdown.tags.base import TagParser
+from dynamic_markdown.parsers.tags.base import TagParser
 
 
 class FieldTagParser(TagParser):
