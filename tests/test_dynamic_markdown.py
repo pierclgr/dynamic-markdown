@@ -34,14 +34,19 @@ def _parse(
         The parsed dynamic-markdown content.
     """
     source = _write(tmp_path / "source.md", content)
-    return DynamicMarkdownFile(source).content(base_dir=tmp_path, tool=tool)
+    file = DynamicMarkdownFile(source)
+    file.parse(base_dir=tmp_path, tool=tool)
+    assert file.content is not None
+    return file.content
 
 
 def test_file_loads_raw_content_from_path_and_string(tmp_path: Path) -> None:
     """Load raw content when initialized with both ``Path`` and ``str``."""
     path = _write(tmp_path / "source.md", "hello")
+    file = DynamicMarkdownFile(path)
 
-    assert DynamicMarkdownFile(path).raw == "hello"
+    assert file.raw == "hello"
+    assert file.content is None
     assert DynamicMarkdownFile(str(path)).raw == "hello"
 
 
@@ -51,11 +56,11 @@ def test_file_missing_source_raises_file_not_found(tmp_path: Path) -> None:
         DynamicMarkdownFile(tmp_path / "missing.md")
 
 
-def test_file_content_delegates_to_parser(
+def test_file_parse_delegates_to_parser_and_caches_content(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Pass file, base directory, and tool through to the parser."""
+    """Pass parser arguments through and cache parsed content."""
     file = DynamicMarkdownFile(_write(tmp_path / "source.md", "raw"))
     tool = object()
     seen: dict[str, object] = {}
@@ -75,12 +80,73 @@ def test_file_content_delegates_to_parser(
 
     monkeypatch.setattr(DynamicMarkdownFile, "_parser", _Parser)
 
-    assert file.content(base_dir=tmp_path, tool=tool) == "parsed"
+    assert file.parse(base_dir=tmp_path, tool=tool) is None
+    assert file.content == "parsed"
     assert seen == {
         "file": file,
         "base_dir": tmp_path,
         "field_source": tool,
     }
+
+
+def test_file_content_returns_cached_content_without_reparsing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Return cached content without delegating to the parser again."""
+    file = DynamicMarkdownFile(_write(tmp_path / "source.md", "raw"))
+    calls = 0
+
+    class _Parser:
+        """Test parser counting received calls."""
+
+        @classmethod
+        def parse(cls, **kwargs: object) -> str:
+            """Count parser calls and return parsed content.
+
+            Returns:
+                Static parsed content with the call count.
+            """
+            nonlocal calls
+            calls += 1
+            return f"parsed {calls}"
+
+    monkeypatch.setattr(DynamicMarkdownFile, "_parser", _Parser)
+
+    assert file.parse(base_dir=tmp_path) is None
+    assert file.content == "parsed 1"
+    assert file.content == "parsed 1"
+    assert calls == 1
+
+
+def test_file_parse_refreshes_cached_content(tmp_path: Path) -> None:
+    """Update cached content every time ``parse`` is called."""
+    file = DynamicMarkdownFile(_write(tmp_path / "source.md", "<field>name</field>"))
+
+    file.parse(base_dir=tmp_path, tool=SimpleNamespace(name="first"))
+    assert file.content == "first"
+
+    file.parse(base_dir=tmp_path, tool=SimpleNamespace(name="second"))
+    assert file.content == "second"
+
+
+def test_file_reload_reloads_raw_content_and_clears_cached_content(
+    tmp_path: Path,
+) -> None:
+    """Reload raw content from disk and clear cached parsed content."""
+    path = _write(tmp_path / "source.md", "first")
+    file = DynamicMarkdownFile(path)
+
+    file.parse(base_dir=tmp_path)
+    assert file.content == "first"
+    _write(path, "second")
+
+    file.reload()
+
+    assert file.raw == "second"
+    assert file.content is None
+    file.parse(base_dir=tmp_path)
+    assert file.content == "second"
 
 
 def test_plain_text_without_tags_is_unchanged(tmp_path: Path) -> None:
@@ -164,7 +230,7 @@ def test_include_cycle_raises_value_error(tmp_path: Path) -> None:
     _write(tmp_path / "b.md", "<include>a.md</include>")
 
     with pytest.raises(ValueError, match="<include> cycle detected"):
-        DynamicMarkdownFile(tmp_path / "a.md").content(base_dir=tmp_path)
+        DynamicMarkdownFile(tmp_path / "a.md").parse(base_dir=tmp_path)
 
 
 def test_existing_python_script_path_runs_as_file(tmp_path: Path) -> None:

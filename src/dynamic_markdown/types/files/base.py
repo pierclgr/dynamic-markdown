@@ -14,6 +14,7 @@ class DynamicMarkdownFile:
         path: filesystem path the file was loaded from. Used by the
             parser to seed the ``<include>`` cycle-detection chain.
         raw: raw text content of the file as read from disk.
+        content: cached parsed content, if the file has been parsed.
     """
 
     _parser: type[DynamicMarkdownFileParser] = DynamicMarkdownFileParser
@@ -28,13 +29,14 @@ class DynamicMarkdownFile:
             path = Path(path)
         self.path: Path = path
         self.raw: str = path.read_text()
+        self.content: str | None = None
 
-    def content(
+    def parse(
         self,
         base_dir: Path | str,
         tool: object | None = None,
-    ) -> str:
-        """Parse the raw content and return the fully expanded text.
+    ) -> None:
+        """Parse and expand raw content, then caches it.
 
         Resolves ``<include>``, ``<script>`` and ``<field>`` tags in
         :attr:`raw`. ``<include>`` and file-backed ``<script>`` targets
@@ -48,13 +50,15 @@ class DynamicMarkdownFile:
                 be ``None`` when :attr:`raw` contains no ``<field>``
                 tag.
 
-        Returns:
-            The fully expanded text.
-
         Tag-specific errors from the parser are allowed to propagate.
         """
-        return self._parser.parse(
+        self.content = self._parser.parse(
             file=self,
             base_dir=base_dir,
             field_source=tool,
         )
+
+    def reload(self) -> None:
+        """Reload raw content from disk and clear cached parsed content."""
+        self.raw = self.path.read_text()
+        self.content = None
