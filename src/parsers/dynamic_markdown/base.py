@@ -31,12 +31,13 @@ class DynamicMarkdownParser(Parser):
     - ``<field>name</field>`` is replaced with
       ``str(getattr(field_source, name))``.
 
-    Tags are resolved in the order ``<include>`` then ``<script>`` then
-    ``<field>``. Includes recurse through :meth:`parse` so an included
-    file may use any of the three tags itself; scripts and fields are
-    resolved in a single pass and their substituted text is **not**
-    re-parsed. ``<include>`` paths and file-backed ``<script>`` tags
-    are resolved against the caller-supplied ``base_dir``, which is
+    Tags are resolved in the order ``<include>`` then ``<field>`` then
+    ``<script>``. Includes recurse through :meth:`parse` so an included
+    file may use any of the three tags itself. Field tags are resolved
+    before scripts so field values may be used in inline script source.
+    Script output is final and is not parsed again for dynamic-markdown
+    tags. ``<include>`` paths and file-backed ``<script>`` tags are
+    resolved against the caller-supplied ``base_dir``, which is
     propagated unchanged through nested includes. ``<include>`` cycles
     are detected and raise :class:`ValueError`.
     """
@@ -82,6 +83,6 @@ class DynamicMarkdownParser(Parser):
             field_source=field_source,
             visited=visited,
         )
-        content = cls._script_tag_parser.parse(content, base_dir=base_dir)
         content = cls._field_tag_parser.parse(content, field_source=field_source)
+        content = cls._script_tag_parser.parse(content, base_dir=base_dir)
         return content
