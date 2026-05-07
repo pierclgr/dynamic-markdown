@@ -1,3 +1,0 @@
-docformatter
-ruff
-pytest
