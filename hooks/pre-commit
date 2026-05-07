@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # pre-commit hook: auto-fix lint and formatting before creating a commit
-# stages fixes only for paths already staged under src/ and tests/
+# stages fixes only for non-deleted paths already staged under src/ and tests/
 
 set -e
 
@@ -13,7 +13,7 @@ INDEX_BEFORE=$(mktemp)
 INDEX_AFTER=$(mktemp)
 trap 'rm -f "$STAGED_PATHS" "$INDEX_BEFORE" "$INDEX_AFTER"' EXIT
 
-git diff --cached --name-only -z -- src/ tests/ > "$STAGED_PATHS"
+git diff --cached --name-only --diff-filter=d -z -- src/ tests/ > "$STAGED_PATHS"
 git diff --cached --binary -- src/ tests/ > "$INDEX_BEFORE"
 
 # auto-fix pass - capture exit codes, do not abort before staging fixes
