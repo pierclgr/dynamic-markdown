@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 # pre-commit hook: auto-fix lint and formatting before creating a commit
-# stages tracked fixes under src/ and tests/ so they are included in the commit
+# stages fixes only for paths already staged under src/ and tests/
 
 set -e
 
 REPO=$(git rev-parse --show-toplevel)
 VENV=$REPO/.venv/bin
 cd "$REPO"
+
+STAGED_PATHS=$(mktemp)
+INDEX_BEFORE=$(mktemp)
+INDEX_AFTER=$(mktemp)
+trap 'rm -f "$STAGED_PATHS" "$INDEX_BEFORE" "$INDEX_AFTER"' EXIT
+
+git diff --cached --name-only -z -- src/ tests/ > "$STAGED_PATHS"
+git diff --cached --binary -- src/ tests/ > "$INDEX_BEFORE"
 
 # auto-fix pass - capture exit codes, do not abort before staging fixes
 ruff_fix_exit=0
@@ -21,10 +29,14 @@ fi
 
 "$VENV/ruff" format src/ tests/
 
-if ! git diff --quiet -- src/ tests/; then
-    git add -u src/ tests/
+if [ -s "$STAGED_PATHS" ]; then
+    git add -u --pathspec-from-file="$STAGED_PATHS" --pathspec-file-nul
+    git diff --cached --binary -- src/ tests/ > "$INDEX_AFTER"
+fi
+
+if ! cmp -s "$INDEX_BEFORE" "$INDEX_AFTER"; then
     echo "" >&2
-    echo "pre-commit: staged auto-fixes under src/ and tests/." >&2
+    echo "pre-commit: staged auto-fixes for previously staged paths under src/ and tests/." >&2
     echo "" >&2
 fi
 
