@@ -23,7 +23,11 @@ class DynamicMarkdownParser(Parser):
       content of the referenced file, so nested tags inside the
       included file are themselves expanded.
     - ``<script>relative/script.py</script>`` is replaced with the
-      captured stdout of running the script via ``sys.executable``.
+      captured stdout of running the referenced script via
+      ``sys.executable``.
+    - ``<script>print("hello")</script>`` is replaced with the
+      captured stdout of running the inline Python code via
+      ``sys.executable -c``.
     - ``<field>name</field>`` is replaced with
       ``str(getattr(field_source, name))``.
 
@@ -31,10 +35,10 @@ class DynamicMarkdownParser(Parser):
     ``<field>``. Includes recurse through :meth:`parse` so an included
     file may use any of the three tags itself; scripts and fields are
     resolved in a single pass and their substituted text is **not**
-    re-parsed. ``<include>`` and ``<script>`` paths are resolved
-    against the caller-supplied ``base_dir``, which is propagated
-    unchanged through nested includes. ``<include>`` cycles are
-    detected and raise :class:`ValueError`.
+    re-parsed. ``<include>`` paths and file-backed ``<script>`` tags
+    are resolved against the caller-supplied ``base_dir``, which is
+    propagated unchanged through nested includes. ``<include>`` cycles
+    are detected and raise :class:`ValueError`.
     """
 
     _include_tag_parser: type[IncludeTagParser] = IncludeTagParser
@@ -54,8 +58,8 @@ class DynamicMarkdownParser(Parser):
         Args:
             file: the markdown-like file whose ``raw`` content is parsed.
             base_dir: directory under which relative ``<include>`` and
-                ``<script>`` targets are resolved. Propagated unchanged
-                through nested includes.
+                file-backed ``<script>`` targets are resolved.
+                Propagated unchanged through nested includes.
             field_source: object whose attributes back ``<field>``
                 tags. When ``None`` the parser still runs, but any
                 ``<field>`` tag present raises :class:`ValueError`.

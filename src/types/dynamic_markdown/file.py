@@ -8,7 +8,7 @@ from src.parsers.dynamic_markdown.base import DynamicMarkdownParser
 
 
 class DynamicMarkdownFile:
-    """A markdown-like file with enhanced parsing.
+    """A markdown-like file with dynamic parsing.
 
     Attributes:
         path: filesystem path the file was loaded from. Used by the
@@ -37,13 +37,13 @@ class DynamicMarkdownFile:
         """Parse the raw content and return the fully expanded text.
 
         Resolves ``<include>``, ``<script>`` and ``<field>`` tags in
-        :attr:`raw`. ``<include>`` and ``<script>`` targets are
-        resolved against ``base_dir``. ``<field>`` tags are replaced
-        with ``str(getattr(tool, name))``.
+        :attr:`raw`. ``<include>`` and file-backed ``<script>`` targets
+        are resolved against ``base_dir``. ``<field>`` tags are
+        replaced with ``str(getattr(tool, name))``.
 
         Args:
             base_dir: directory under which relative ``<include>`` and
-                ``<script>`` targets are searched.
+                file-backed ``<script>`` targets are searched.
             tool: object whose attributes back ``<field>`` tags. May
                 be ``None`` when :attr:`raw` contains no ``<field>``
                 tag.
