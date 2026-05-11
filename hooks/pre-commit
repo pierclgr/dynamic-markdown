@@ -16,9 +16,8 @@ trap 'rm -f "$STAGED_PATHS" "$INDEX_BEFORE" "$INDEX_AFTER"' EXIT
 git diff --cached --name-only --diff-filter=d -z -- src/ tests/ > "$STAGED_PATHS"
 git diff --cached --binary -- src/ tests/ > "$INDEX_BEFORE"
 
-# auto-fix pass - capture exit codes, do not abort before staging fixes
-ruff_fix_exit=0
-"$VENV/ruff" check --fix src/ tests/ || ruff_fix_exit=$?
+# auto-fix pass - do not abort before format + final check have run
+"$VENV/ruff" check --fix src/ tests/ || true
 
 docf_exit=0
 "$VENV/docformatter" --in-place --recursive --wrap-summaries 88 --wrap-descriptions 88 src/ tests/ || docf_exit=$?
@@ -40,6 +39,9 @@ if ! cmp -s "$INDEX_BEFORE" "$INDEX_AFTER"; then
     echo "" >&2
 fi
 
-if [ "$ruff_fix_exit" -ne 0 ]; then
-    exit "$ruff_fix_exit"
+# final verdict: re-check after format has had a chance to fix layout-driven errors
+ruff_check_exit=0
+"$VENV/ruff" check src/ tests/ || ruff_check_exit=$?
+if [ "$ruff_check_exit" -ne 0 ]; then
+    exit "$ruff_check_exit"
 fi
