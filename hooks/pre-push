@@ -13,7 +13,7 @@ cd "$REPO"
 
 # tests
 pytest_status=0
-"$VENV/python" -m pytest tests/ -v || pytest_status=$?
+"$VENV/python" -m pytest tests/ || pytest_status=$?
 
 # allow empty test suite, but keep blocking real pytest failures
 if [ "$pytest_status" -eq 5 ]; then
