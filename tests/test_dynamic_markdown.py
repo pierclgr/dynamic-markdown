@@ -8,7 +8,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from dynamic_markdown.parsers.files.base import DynamicMarkdownFileParser
 from dynamic_markdown.types.files.base import DynamicMarkdownFile
 
 
@@ -35,7 +34,7 @@ def _parse(
     """
     source = _write(tmp_path / "source.md", content)
     file = DynamicMarkdownFile(source)
-    file.parse(base_dir=tmp_path, tool=tool)
+    file.parse(tool=tool)
     assert file.content is not None
     return file.content
 
@@ -80,11 +79,10 @@ def test_file_parse_delegates_to_parser_and_caches_content(
 
     monkeypatch.setattr(DynamicMarkdownFile, "_parser", _Parser)
 
-    assert file.parse(base_dir=tmp_path, tool=tool) is None
+    assert file.parse(tool=tool) is None
     assert file.content == "parsed"
     assert seen == {
         "file": file,
-        "base_dir": tmp_path,
         "field_source": tool,
     }
 
@@ -113,7 +111,7 @@ def test_file_content_returns_cached_content_without_reparsing(
 
     monkeypatch.setattr(DynamicMarkdownFile, "_parser", _Parser)
 
-    assert file.parse(base_dir=tmp_path) is None
+    assert file.parse() is None
     assert file.content == "parsed 1"
     assert file.content == "parsed 1"
     assert calls == 1
@@ -123,10 +121,10 @@ def test_file_parse_refreshes_cached_content(tmp_path: Path) -> None:
     """Update cached content every time ``parse`` is called."""
     file = DynamicMarkdownFile(_write(tmp_path / "source.md", "<field>name</field>"))
 
-    file.parse(base_dir=tmp_path, tool=SimpleNamespace(name="first"))
+    file.parse(tool=SimpleNamespace(name="first"))
     assert file.content == "first"
 
-    file.parse(base_dir=tmp_path, tool=SimpleNamespace(name="second"))
+    file.parse(tool=SimpleNamespace(name="second"))
     assert file.content == "second"
 
 
@@ -137,7 +135,7 @@ def test_file_reload_reloads_raw_content_and_clears_cached_content(
     path = _write(tmp_path / "source.md", "first")
     file = DynamicMarkdownFile(path)
 
-    file.parse(base_dir=tmp_path)
+    file.parse()
     assert file.content == "first"
     _write(path, "second")
 
@@ -145,7 +143,7 @@ def test_file_reload_reloads_raw_content_and_clears_cached_content(
 
     assert file.raw == "second"
     assert file.content is None
-    file.parse(base_dir=tmp_path)
+    file.parse()
     assert file.content == "second"
 
 
@@ -191,14 +189,15 @@ def test_include_tag_replaces_file_content_and_strips_whitespace(
     )
 
 
-def test_include_tags_parse_nested_includes_from_original_base_dir(
+def test_include_tags_resolve_relative_to_the_including_files_own_directory(
     tmp_path: Path,
 ) -> None:
-    """Parse nested includes against the original base directory."""
-    _write(tmp_path / "parts" / "first.md", "first <include>second.md</include>")
-    _write(tmp_path / "second.md", "second")
+    """Resolve each nested include path against its own including file."""
+    _write(tmp_path / "b" / "first.md", "first <include>c/second.md</include>")
+    _write(tmp_path / "b" / "c" / "second.md", "second")
+    _write(tmp_path / "c" / "second.md", "wrong directory")
 
-    assert _parse(tmp_path, "<include>parts/first.md</include>") == "first second"
+    assert _parse(tmp_path, "<include>b/first.md</include>") == "first second"
 
 
 def test_included_content_can_contain_script_and_field_tags(tmp_path: Path) -> None:
@@ -230,7 +229,83 @@ def test_include_cycle_raises_value_error(tmp_path: Path) -> None:
     _write(tmp_path / "b.md", "<include>a.md</include>")
 
     with pytest.raises(ValueError, match="<include> cycle detected"):
-        DynamicMarkdownFile(tmp_path / "a.md").parse(base_dir=tmp_path)
+        DynamicMarkdownFile(tmp_path / "a.md").parse()
+
+
+def test_bare_include_resolves_relative_to_the_including_files_directory(
+    tmp_path: Path,
+) -> None:
+    """Replace a bare ``@path`` include relative to the including file."""
+    _write(tmp_path / "parts" / "intro.md", "included")
+
+    assert _parse(tmp_path, "before @parts/intro.md after") == "before included after"
+
+
+def test_bare_include_supports_dot_and_dotdot_relative_paths(tmp_path: Path) -> None:
+    """Resolve ``./`` and ``../`` bare includes against the including file."""
+    _write(tmp_path / "top.md", "top")
+    _write(tmp_path / "nested" / "sibling.md", "sibling")
+    _write(
+        tmp_path / "nested" / "child.md",
+        "start @./sibling.md then @../top.md end",
+    )
+
+    assert (
+        _parse(tmp_path, "<include>nested/child.md</include>")
+        == "start sibling then top end"
+    )
+
+
+def test_bare_include_with_leading_slash_resolves_as_absolute_path(
+    tmp_path: Path,
+) -> None:
+    """Resolve a bare include starting with ``/`` as an absolute path."""
+    target = _write(tmp_path / "notes.md", "note")
+
+    assert _parse(tmp_path, f"before @{target} after") == "before note after"
+
+
+def test_bare_include_falls_back_to_literal_text_when_target_is_missing(
+    tmp_path: Path,
+) -> None:
+    """Leave a bare ``@`` token unchanged when it does not resolve to a file."""
+    assert _parse(tmp_path, "reach me at user@example.com for details") == (
+        "reach me at user@example.com for details"
+    )
+
+
+def test_bare_include_recursively_parses_included_content(tmp_path: Path) -> None:
+    """Expand tags inside content included via the bare ``@path`` syntax."""
+    _write(
+        tmp_path / "parts" / "intro.md",
+        '<script>print("hello")</script> <field>name</field>',
+    )
+
+    assert (
+        _parse(tmp_path, "@parts/intro.md", tool=SimpleNamespace(name="tool"))
+        == "hello tool"
+    )
+
+
+def test_bare_include_does_not_raise_for_missing_target_unlike_include_tag(
+    tmp_path: Path,
+) -> None:
+    """Contrast the strict ``<include>`` tag with the bare form's fallback."""
+    with pytest.raises(FileNotFoundError):
+        _parse(tmp_path, "<include>missing.md</include>")
+
+    assert _parse(tmp_path, "@missing.md") == "@missing.md"
+
+
+def test_include_cycle_raises_value_error_when_mixing_tag_and_bare_syntax(
+    tmp_path: Path,
+) -> None:
+    """Raise ``ValueError`` for a cycle formed across both include syntaxes."""
+    _write(tmp_path / "a.md", "<include>b.md</include>")
+    _write(tmp_path / "b.md", "@a.md")
+
+    with pytest.raises(ValueError, match="<include> cycle detected"):
+        DynamicMarkdownFile(tmp_path / "a.md").parse()
 
 
 def test_existing_python_script_path_runs_as_file(tmp_path: Path) -> None:
@@ -249,6 +324,21 @@ def test_existing_non_python_script_path_runs_as_file(tmp_path: Path) -> None:
     _write(tmp_path / "scripts" / "runner", 'print("from file")\n')
 
     assert _parse(tmp_path, "<script> scripts/runner </script>") == "from file"
+
+
+def test_included_files_script_tag_resolves_relative_to_its_own_directory(
+    tmp_path: Path,
+) -> None:
+    """Resolve an included file's script path and cwd against its own directory."""
+    _write(tmp_path / "data.txt", "top-level data")
+    _write(tmp_path / "parts" / "data.txt", "nested data")
+    _write(
+        tmp_path / "parts" / "read_data.py",
+        'from pathlib import Path\nprint(Path("data.txt").read_text())\n',
+    )
+    _write(tmp_path / "parts" / "report.md", "<script>read_data.py</script>")
+
+    assert _parse(tmp_path, "<include>parts/report.md</include>") == "nested data"
 
 
 def test_missing_python_script_path_raises_called_process_error(tmp_path: Path) -> None:
@@ -372,18 +462,4 @@ def test_field_output_script_tags_are_executed_but_include_tags_are_not(
 
     assert _parse(tmp_path, "<field>value</field>", tool=tool) == (
         "x<include>part.md</include>"
-    )
-
-
-def test_parser_parse_accepts_string_base_dir(tmp_path: Path) -> None:
-    """Accept ``base_dir`` as a string."""
-    file = DynamicMarkdownFile(_write(tmp_path / "source.md", "<field>name</field>"))
-
-    assert (
-        DynamicMarkdownFileParser.parse(
-            file=file,
-            base_dir=str(tmp_path),
-            field_source=SimpleNamespace(name="tool"),
-        )
-        == "tool"
     )

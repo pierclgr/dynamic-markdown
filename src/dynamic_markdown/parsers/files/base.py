@@ -22,6 +22,10 @@ class DynamicMarkdownFileParser(Parser):
     - ``<include>relative/path</include>`` is replaced with the parsed
       content of the referenced file, so nested tags inside the
       included file are themselves expanded.
+    - ``@relative/path`` is a bare alternative to ``<include>``: it is
+      replaced the same way, but only when the resolved path is an
+      existing file. Otherwise the text is left unchanged, so ordinary
+      ``@`` usage (e.g. an email address) passes through as-is.
     - ``<script>relative/script.py</script>`` is replaced with the
       captured stdout of running the referenced script via
       ``sys.executable``.
@@ -31,15 +35,19 @@ class DynamicMarkdownFileParser(Parser):
     - ``<field>name</field>`` is replaced with
       ``str(getattr(field_source, name))``.
 
-    Tags are resolved in the order ``<include>`` then ``<field>`` then
-    ``<script>``. Includes recurse through :meth:`parse` so an included
-    file may use any of the three tags itself. Field tags are resolved
-    before scripts so field values may be used in inline script source.
-    Script output is final and is not parsed again for dynamic-markdown
-    tags. ``<include>`` paths and file-backed ``<script>`` tags are
-    resolved against the caller-supplied ``base_dir``, which is
-    propagated unchanged through nested includes. ``<include>`` cycles
-    are detected and raise :class:`ValueError`.
+    Tags are resolved in the order ``<include>``/``@path`` then
+    ``<field>`` then ``<script>``. Includes recurse through :meth:`parse`
+    so an included file may use any of the tags itself. Field tags are
+    resolved before scripts so field values may be used in inline script
+    source. Script output is final and is not parsed again for
+    dynamic-markdown tags. A path starting with ``/`` is resolved as an
+    absolute path; any other path is resolved against the directory of
+    the markdown file that currently contains the tag, re-derived fresh
+    at every level of nested includes rather than propagated from the
+    top-level caller. This applies to ``<include>``/``@path`` targets and
+    to file-backed ``<script>`` targets and their working directory alike.
+    ``<include>`` cycles are detected regardless of which include syntax
+    formed them and raise :class:`ValueError`.
     """
 
     _include_tag_parser: type[IncludeTagParser] = IncludeTagParser
@@ -50,7 +58,6 @@ class DynamicMarkdownFileParser(Parser):
     def parse(
         cls,
         file: "DynamicMarkdownFile",
-        base_dir: Path | str,
         field_source: object | None = None,
         _visited: tuple[Path, ...] = (),
     ) -> str:
@@ -58,9 +65,6 @@ class DynamicMarkdownFileParser(Parser):
 
         Args:
             file: the markdown-like file whose ``raw`` content is parsed.
-            base_dir: directory under which relative ``<include>`` and
-                file-backed ``<script>`` targets are resolved.
-                Propagated unchanged through nested includes.
             field_source: object whose attributes back ``<field>``
                 tags. When ``None`` the parser still runs, but any
                 ``<field>`` tag present raises :class:`ValueError`.
@@ -69,20 +73,21 @@ class DynamicMarkdownFileParser(Parser):
                 Callers should not pass this argument.
 
         Returns:
-            The fully expanded text with all three tag types resolved.
+            The fully expanded text with all tag types resolved.
 
         Tag-specific errors from include, script, and field parsers
         are allowed to propagate.
         """
-        base_dir = Path(base_dir)
-        visited = _visited + (file.path.resolve(),)
+        resolved_path = file.path.resolve()
+        current_dir = resolved_path.parent
+        visited = _visited + (resolved_path,)
 
         content = cls._include_tag_parser.parse(
             file.raw,
-            base_dir=base_dir,
+            current_dir=current_dir,
             field_source=field_source,
             visited=visited,
         )
         content = cls._field_tag_parser.parse(content, field_source=field_source)
-        content = cls._script_tag_parser.parse(content, base_dir=base_dir)
+        content = cls._script_tag_parser.parse(content, current_dir=current_dir)
         return content

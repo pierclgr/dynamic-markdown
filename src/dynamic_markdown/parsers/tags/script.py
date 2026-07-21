@@ -21,27 +21,28 @@ class ScriptTagParser(TagParser):
     )
 
     @staticmethod
-    def _replace(match: re.Match[str], base_dir: Path) -> str:
+    def _replace(match: re.Match[str], current_dir: Path) -> str:
         """Substitute one script tag with the script's stdout.
 
         Args:
             match: the regex match for a script tag.
-            base_dir: directory used to resolve script file targets and
-                run scripts.
+            current_dir: directory of the markdown file containing the
+                tag, used to resolve script file targets and as the
+                working directory scripts run in.
 
         Returns:
             The script's stdout with a single trailing newline
             stripped.
         """
         script = match.group(1).strip()
-        target = (base_dir / script).resolve()
+        target = (current_dir / script).resolve()
         command = [sys.executable, "-c", script]
         if target.is_file() or Path(script).suffix == ".py":
             command = [sys.executable, str(target)]
 
         result = subprocess.run(
             command,
-            cwd=base_dir,
+            cwd=current_dir,
             capture_output=True,
             text=True,
             check=True,
