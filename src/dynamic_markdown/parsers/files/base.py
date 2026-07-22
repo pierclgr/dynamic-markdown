@@ -21,11 +21,16 @@ class DynamicMarkdownFileParser(Parser):
 
     - ``<include>relative/path</include>`` is replaced with the parsed
       content of the referenced file, so nested tags inside the
-      included file are themselves expanded.
+      included file are themselves expanded. The replacement is
+      wrapped in a horizontal rule and an HTML comment naming the
+      absolute source path, unless the tag sits inside a ``<script>``
+      span, where the wrapper is suppressed so the included text
+      remains valid script source.
     - ``@relative/path`` is a bare alternative to ``<include>``: it is
-      replaced the same way, but only when the resolved path is an
-      existing file. Otherwise the text is left unchanged, so ordinary
-      ``@`` usage (e.g. an email address) passes through as-is.
+      replaced the same way, including the reference wrapper, but only
+      when the resolved path is an existing file. Otherwise the text
+      is left unchanged, so ordinary ``@`` usage (e.g. an email
+      address) passes through as-is.
     - ``<script>relative/script.py</script>`` is replaced with the
       captured stdout of running the referenced script via
       ``sys.executable``.

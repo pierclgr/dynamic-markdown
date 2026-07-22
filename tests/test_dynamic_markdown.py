@@ -39,6 +39,16 @@ def _parse(
     return file.content
 
 
+def _wrap(path: Path, content: str) -> str:
+    """Build the expected reference-wrapped form of included ``content``.
+
+    Returns:
+        ``content`` wrapped as :class:`IncludeTagParser` wraps it, noting
+        the resolved absolute ``path`` it was included from.
+    """
+    return f"___\n<!-- Included from: {path.resolve()} -->\n{content}\n___"
+
+
 def test_file_loads_raw_content_from_path_and_string(tmp_path: Path) -> None:
     """Load raw content when initialized with both ``Path`` and ``str``."""
     path = _write(tmp_path / "source.md", "hello")
@@ -182,10 +192,10 @@ def test_include_tag_replaces_file_content_and_strips_whitespace(
     tmp_path: Path,
 ) -> None:
     """Replace an include tag with the referenced file content."""
-    _write(tmp_path / "parts" / "intro.md", "included")
+    intro = _write(tmp_path / "parts" / "intro.md", "included")
 
     assert _parse(tmp_path, "before <include> parts/intro.md </include> after") == (
-        "before included after"
+        f"before {_wrap(intro, 'included')} after"
     )
 
 
@@ -193,28 +203,27 @@ def test_include_tags_resolve_relative_to_the_including_files_own_directory(
     tmp_path: Path,
 ) -> None:
     """Resolve each nested include path against its own including file."""
-    _write(tmp_path / "b" / "first.md", "first <include>c/second.md</include>")
-    _write(tmp_path / "b" / "c" / "second.md", "second")
+    first = _write(tmp_path / "b" / "first.md", "first <include>c/second.md</include>")
+    second = _write(tmp_path / "b" / "c" / "second.md", "second")
     _write(tmp_path / "c" / "second.md", "wrong directory")
 
-    assert _parse(tmp_path, "<include>b/first.md</include>") == "first second"
+    assert _parse(tmp_path, "<include>b/first.md</include>") == _wrap(
+        first, f"first {_wrap(second, 'second')}"
+    )
 
 
 def test_included_content_can_contain_script_and_field_tags(tmp_path: Path) -> None:
     """Expand script and field tags inside included content."""
-    _write(
+    intro = _write(
         tmp_path / "parts" / "intro.md",
         '<script>print("hello")</script> <field>name</field>',
     )
 
-    assert (
-        _parse(
-            tmp_path,
-            "<include>parts/intro.md</include>",
-            tool=SimpleNamespace(name="tool"),
-        )
-        == "hello tool"
-    )
+    assert _parse(
+        tmp_path,
+        "<include>parts/intro.md</include>",
+        tool=SimpleNamespace(name="tool"),
+    ) == _wrap(intro, "hello tool")
 
 
 def test_missing_include_raises_file_not_found(tmp_path: Path) -> None:
@@ -236,23 +245,25 @@ def test_bare_include_resolves_relative_to_the_including_files_directory(
     tmp_path: Path,
 ) -> None:
     """Replace a bare ``@path`` include relative to the including file."""
-    _write(tmp_path / "parts" / "intro.md", "included")
+    intro = _write(tmp_path / "parts" / "intro.md", "included")
 
-    assert _parse(tmp_path, "before @parts/intro.md after") == "before included after"
+    assert _parse(tmp_path, "before @parts/intro.md after") == (
+        f"before {_wrap(intro, 'included')} after"
+    )
 
 
 def test_bare_include_supports_dot_and_dotdot_relative_paths(tmp_path: Path) -> None:
     """Resolve ``./`` and ``../`` bare includes against the including file."""
-    _write(tmp_path / "top.md", "top")
-    _write(tmp_path / "nested" / "sibling.md", "sibling")
-    _write(
+    top = _write(tmp_path / "top.md", "top")
+    sibling = _write(tmp_path / "nested" / "sibling.md", "sibling")
+    child = _write(
         tmp_path / "nested" / "child.md",
         "start @./sibling.md then @../top.md end",
     )
 
-    assert (
-        _parse(tmp_path, "<include>nested/child.md</include>")
-        == "start sibling then top end"
+    assert _parse(tmp_path, "<include>nested/child.md</include>") == _wrap(
+        child,
+        f"start {_wrap(sibling, 'sibling')} then {_wrap(top, 'top')} end",
     )
 
 
@@ -262,7 +273,9 @@ def test_bare_include_with_leading_slash_resolves_as_absolute_path(
     """Resolve a bare include starting with ``/`` as an absolute path."""
     target = _write(tmp_path / "notes.md", "note")
 
-    assert _parse(tmp_path, f"before @{target} after") == "before note after"
+    assert _parse(tmp_path, f"before @{target} after") == (
+        f"before {_wrap(target, 'note')} after"
+    )
 
 
 def test_bare_include_falls_back_to_literal_text_when_target_is_missing(
@@ -276,15 +289,14 @@ def test_bare_include_falls_back_to_literal_text_when_target_is_missing(
 
 def test_bare_include_recursively_parses_included_content(tmp_path: Path) -> None:
     """Expand tags inside content included via the bare ``@path`` syntax."""
-    _write(
+    intro = _write(
         tmp_path / "parts" / "intro.md",
         '<script>print("hello")</script> <field>name</field>',
     )
 
-    assert (
-        _parse(tmp_path, "@parts/intro.md", tool=SimpleNamespace(name="tool"))
-        == "hello tool"
-    )
+    assert _parse(
+        tmp_path, "@parts/intro.md", tool=SimpleNamespace(name="tool")
+    ) == _wrap(intro, "hello tool")
 
 
 def test_bare_include_does_not_raise_for_missing_target_unlike_include_tag(
@@ -336,9 +348,11 @@ def test_included_files_script_tag_resolves_relative_to_its_own_directory(
         tmp_path / "parts" / "read_data.py",
         'from pathlib import Path\nprint(Path("data.txt").read_text())\n',
     )
-    _write(tmp_path / "parts" / "report.md", "<script>read_data.py</script>")
+    report = _write(tmp_path / "parts" / "report.md", "<script>read_data.py</script>")
 
-    assert _parse(tmp_path, "<include>parts/report.md</include>") == "nested data"
+    assert _parse(tmp_path, "<include>parts/report.md</include>") == _wrap(
+        report, "nested data"
+    )
 
 
 def test_missing_python_script_path_raises_called_process_error(tmp_path: Path) -> None:
