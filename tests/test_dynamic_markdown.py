@@ -27,16 +27,13 @@ def _parse(
     content: str,
     tool: object | None = None,
 ) -> str:
-    """Parse temporary dynamic-markdown content.
+    """Load and parse temporary dynamic-markdown content.
 
     Returns:
         The parsed dynamic-markdown content.
     """
     source = _write(tmp_path / "source.md", content)
-    file = DynamicMarkdownFile(source)
-    file.parse(tool=tool)
-    assert file.content is not None
-    return file.content
+    return DynamicMarkdownFile(source, tool=tool).content
 
 
 def _wrap(path: Path, content: str) -> str:
@@ -50,13 +47,18 @@ def _wrap(path: Path, content: str) -> str:
 
 
 def test_file_loads_raw_content_from_path_and_string(tmp_path: Path) -> None:
-    """Load raw content when initialized with both ``Path`` and ``str``."""
+    """Load and parse content when initialized with both ``Path`` and ``str``."""
     path = _write(tmp_path / "source.md", "hello")
     file = DynamicMarkdownFile(path)
 
     assert file.raw == "hello"
-    assert file.content is None
+    assert file.content == "hello"
     assert DynamicMarkdownFile(str(path)).raw == "hello"
+
+
+def test_reload_is_an_alias_of_load() -> None:
+    """Expose ``reload`` as an alias of ``load``."""
+    assert DynamicMarkdownFile.reload is DynamicMarkdownFile.load
 
 
 def test_file_missing_source_raises_file_not_found(tmp_path: Path) -> None:
@@ -65,7 +67,7 @@ def test_file_missing_source_raises_file_not_found(tmp_path: Path) -> None:
         DynamicMarkdownFile(tmp_path / "missing.md")
 
 
-def test_file_parse_delegates_to_parser_and_caches_content(
+def test_file_load_delegates_to_parser_and_caches_content(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -89,11 +91,12 @@ def test_file_parse_delegates_to_parser_and_caches_content(
 
     monkeypatch.setattr(DynamicMarkdownFile, "_parser", _Parser)
 
-    assert file.parse(tool=tool) is None
+    assert file.load(tool=tool) is None
     assert file.content == "parsed"
     assert seen == {
         "file": file,
         "field_source": tool,
+        "_visited": (),
     }
 
 
@@ -121,39 +124,35 @@ def test_file_content_returns_cached_content_without_reparsing(
 
     monkeypatch.setattr(DynamicMarkdownFile, "_parser", _Parser)
 
-    assert file.parse() is None
+    assert file.load() is None
     assert file.content == "parsed 1"
     assert file.content == "parsed 1"
     assert calls == 1
 
 
-def test_file_parse_refreshes_cached_content(tmp_path: Path) -> None:
-    """Update cached content every time ``parse`` is called."""
-    file = DynamicMarkdownFile(_write(tmp_path / "source.md", "<field>name</field>"))
-
-    file.parse(tool=SimpleNamespace(name="first"))
+def test_file_load_refreshes_cached_content(tmp_path: Path) -> None:
+    """Update cached content every time ``load`` is called."""
+    file = DynamicMarkdownFile(
+        _write(tmp_path / "source.md", "<field>name</field>"),
+        tool=SimpleNamespace(name="first"),
+    )
     assert file.content == "first"
 
-    file.parse(tool=SimpleNamespace(name="second"))
+    file.load(tool=SimpleNamespace(name="second"))
     assert file.content == "second"
 
 
-def test_file_reload_reloads_raw_content_and_clears_cached_content(
-    tmp_path: Path,
-) -> None:
-    """Reload raw content from disk and clear cached parsed content."""
+def test_file_reload_rereads_raw_and_reparses_content(tmp_path: Path) -> None:
+    """Reread raw content from disk and reparse it on reload."""
     path = _write(tmp_path / "source.md", "first")
     file = DynamicMarkdownFile(path)
 
-    file.parse()
     assert file.content == "first"
     _write(path, "second")
 
     file.reload()
 
     assert file.raw == "second"
-    assert file.content is None
-    file.parse()
     assert file.content == "second"
 
 
@@ -238,7 +237,7 @@ def test_include_cycle_raises_value_error(tmp_path: Path) -> None:
     _write(tmp_path / "b.md", "<include>a.md</include>")
 
     with pytest.raises(ValueError, match="<include> cycle detected"):
-        DynamicMarkdownFile(tmp_path / "a.md").parse()
+        DynamicMarkdownFile(tmp_path / "a.md")
 
 
 def test_bare_include_resolves_relative_to_the_including_files_directory(
@@ -317,7 +316,7 @@ def test_include_cycle_raises_value_error_when_mixing_tag_and_bare_syntax(
     _write(tmp_path / "b.md", "@a.md")
 
     with pytest.raises(ValueError, match="<include> cycle detected"):
-        DynamicMarkdownFile(tmp_path / "a.md").parse()
+        DynamicMarkdownFile(tmp_path / "a.md")
 
 
 def test_existing_python_script_path_runs_as_file(tmp_path: Path) -> None:

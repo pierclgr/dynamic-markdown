@@ -102,7 +102,6 @@ class IncludeTagParser(TagParser):
             ValueError: when the include target is already in the
                 ``visited`` chain, indicating a cycle.
         """
-        from dynamic_markdown.parsers.files.base import DynamicMarkdownFileParser
         from dynamic_markdown.types.files.base import DynamicMarkdownFile
 
         tag_path = match.group(1)
@@ -116,12 +115,8 @@ class IncludeTagParser(TagParser):
         if target in visited:
             chain = " -> ".join(str(p) for p in (*visited, target))
             raise ValueError(f"<include> cycle detected: {chain}")
-        included = DynamicMarkdownFile(target)
-        content = DynamicMarkdownFileParser.parse(
-            file=included,
-            field_source=field_source,
-            _visited=visited,
-        )
+        included = DynamicMarkdownFile(target, tool=field_source, _visited=visited)
+        content = included.content
 
         in_script = any(start <= match.start() < end for start, end in script_spans)
         if in_script:
