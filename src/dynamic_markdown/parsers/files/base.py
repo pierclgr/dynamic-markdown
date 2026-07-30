@@ -26,11 +26,17 @@ class DynamicMarkdownFileParser(Parser):
       absolute source path, unless the tag sits inside a ``<script>``
       span, where the wrapper is suppressed so the included text
       remains valid script source.
+    - ``<include>relative/dir</include>`` is replaced with a listing of
+      that directory's direct children instead, one entry per line,
+      sorted by name, hidden entries included and subdirectories
+      suffixed with ``/``. The listed files themselves are neither read
+      nor parsed. The wrapper comment names the listed directory.
     - ``@relative/path`` is a bare alternative to ``<include>``: it is
-      replaced the same way, including the reference wrapper, but only
-      when the resolved path is an existing file. Otherwise the text
-      is left unchanged, so ordinary ``@`` usage (e.g. an email
-      address) passes through as-is.
+      replaced the same way for both files and directories, including
+      the reference wrapper, but only when the resolved path is an
+      existing file or directory. Otherwise the text is left unchanged,
+      so ordinary ``@`` usage (e.g. an email address) passes through
+      as-is.
     - ``<script>relative/script.py</script>`` is replaced with the
       captured stdout of running the referenced script via
       ``sys.executable``.

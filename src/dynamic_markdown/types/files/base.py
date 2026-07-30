@@ -49,11 +49,14 @@ class DynamicMarkdownFile:
         """Read raw content from disk and parse it, caching the result.
 
         Resolves ``<include>``/``@path``, ``<script>`` and ``<field>``
-        tags in the freshly read content. A path starting with ``/``
-        resolves as an absolute path; any other ``<include>``/``@path``
-        target and file-backed ``<script>`` target resolves against
-        :attr:`path`'s own directory. ``<field>`` tags are replaced
-        with ``str(getattr(tool, name))``.
+        tags in the freshly read content. An ``<include>``/``@path``
+        target that is a file is replaced with that file's parsed
+        content; a target that is a directory is replaced with a listing
+        of its direct children. A path starting with ``/`` resolves as
+        an absolute path; any other ``<include>``/``@path`` target and
+        file-backed ``<script>`` target resolves against :attr:`path`'s
+        own directory. ``<field>`` tags are replaced with
+        ``str(getattr(tool, name))``.
 
         Args:
             tool: object whose attributes back ``<field>`` tags. May

@@ -43,7 +43,17 @@ def _wrap(path: Path, content: str) -> str:
         ``content`` wrapped as :class:`IncludeTagParser` wraps it, noting
         the resolved absolute ``path`` it was included from.
     """
-    return f"___\n<!-- Included from: {path.resolve()} -->\n{content}\n___"
+    return f"___\n<!-- Included from {path.resolve()} -->\n{content}\n___"
+
+
+def _wrap_directory(path: Path, listing: str) -> str:
+    """Build the expected reference-wrapped form of a directory ``listing``.
+
+    Returns:
+        ``listing`` wrapped as :class:`IncludeTagParser` wraps it, noting
+        the resolved absolute ``path`` of the listed directory.
+    """
+    return f"___\n<!-- Content of directory {path.resolve()} -->\n{listing}\n___"
 
 
 def test_file_loads_raw_content_from_path_and_string(tmp_path: Path) -> None:
@@ -317,6 +327,53 @@ def test_include_cycle_raises_value_error_when_mixing_tag_and_bare_syntax(
 
     with pytest.raises(ValueError, match="<include> cycle detected"):
         DynamicMarkdownFile(tmp_path / "a.md")
+
+
+def test_include_tag_lists_directory_contents(tmp_path: Path) -> None:
+    """Replace an include tag pointing at a directory with its listing."""
+    _write(tmp_path / "parts" / "intro.md", "intro")
+    _write(tmp_path / "parts" / "footer.md", "footer")
+    expected = _wrap_directory(tmp_path / "parts", "footer.md\nintro.md")
+
+    assert _parse(tmp_path, "before <include>parts</include> after") == (
+        f"before {expected} after"
+    )
+
+
+def test_bare_include_lists_directory_contents(tmp_path: Path) -> None:
+    """Replace a bare ``@path`` pointing at a directory with its listing."""
+    _write(tmp_path / "parts" / "intro.md", "intro")
+    expected = _wrap_directory(tmp_path / "parts", "intro.md")
+
+    assert _parse(tmp_path, "@parts") == expected
+    assert _parse(tmp_path, "@parts/") == expected
+
+
+def test_directory_listing_sorts_entries_and_marks_subdirectories(
+    tmp_path: Path,
+) -> None:
+    """List entries sorted by name, hidden ones included, directories suffixed."""
+    _write(tmp_path / "data" / "intro.md", "intro")
+    _write(tmp_path / "data" / ".hidden", "hidden")
+    _write(tmp_path / "data" / "notes" / "detail.md", "detail")
+
+    assert _parse(tmp_path, "@data") == _wrap_directory(
+        tmp_path / "data", ".hidden\nintro.md\nnotes/"
+    )
+
+
+def test_directory_listing_does_not_parse_the_listed_files(tmp_path: Path) -> None:
+    """List entry names only, leaving the listed files' own tags untouched."""
+    _write(tmp_path / "data" / "tagged.md", "<field>missing</field>")
+
+    assert _parse(tmp_path, "@data") == _wrap_directory(tmp_path / "data", "tagged.md")
+
+
+def test_empty_directory_lists_no_entries(tmp_path: Path) -> None:
+    """Wrap an empty listing when the directory holds no entries."""
+    (tmp_path / "empty").mkdir()
+
+    assert _parse(tmp_path, "@empty") == _wrap_directory(tmp_path / "empty", "")
 
 
 def test_existing_python_script_path_runs_as_file(tmp_path: Path) -> None:
